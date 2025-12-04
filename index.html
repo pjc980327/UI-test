@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>설비팀 문서탐색 시스템</title>
+    <!-- ✅ Noto Sans KR 폰트 -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            color: #333;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 15vh 20px 40px 20px;
+            position: relative;
+        }
+
+        .toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 60px;
+            height: 30px;
+            background: #ddd;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            z-index: 1000;
+        }
+
+        .toggle.active { background: #4A90E2; }
+        .toggle::before {
+            content: "";
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 24px;
+            height: 24px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s ease;
+        }
+        .toggle.active::before { transform: translateX(30px); }
+
+        .header { text-align: center; margin-bottom: 60px; }
+        .logo img { height: 60px; margin-bottom: 20px; }
+
+        .main-title {
+            font-size: 26px;
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 40px;
+        }
+
+        .search-container {
+            max-width: 600px;
+            margin: 0 auto 40px auto;
+            position: relative;
+        }
+        .search-box {
+            width: 100%;
+            padding: 15px 50px 15px 20px;
+            border: 1px solid rgba(226, 232, 240, 0.6);
+            border-radius: 12px;
+            font-size: 16px;
+            outline: none;
+            background: #fff;
+            box-shadow: 0 4px 12px rgba(13, 10, 44, 0.06);
+            transition: all 0.3s ease;
+            color: #333;
+        }
+        .search-box:focus {
+            border-color: #4A90E2;
+            box-shadow: 0 4px 20px rgba(74, 144, 226, 0.2);
+        }
+        .search-btn {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            width: 36px;
+            height: 36px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .search-btn img { width: 28px; height: 28px; }
+
+        /* 결과 영역 */
+        #result { margin-top: 40px; max-width: 900px; margin: 40px auto 0; }
+
+        .result-card {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+            transition: transform 0.2s ease;
+        }
+        .result-card:hover { transform: translateY(-3px); }
+
+        .result-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .result-title { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+        .result-meta { font-size: 14px; color: #666; margin-bottom: 6px; }
+        body.dark .result-meta { color: #ddd; }
+
+        .result-accuracy { font-size: 13px; color: #444; margin-bottom: 12px; }
+        body.dark .result-accuracy { color: #ccc; }
+
+        .result-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: auto;
+        }
+
+        .result-buttons button {
+            flex: unset;
+            width: auto;
+            min-width: 90px;
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #f8f9fa;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s ease;
+        }
+
+        .result-buttons button:hover { background: #e9ecef; }
+
+        .summary-box {
+            margin-top: 12px;
+            padding: 14px 18px;
+            background: #f0f7ff;
+            border: 1px solid #cce0ff;
+            border-radius: 8px;
+            color: #333;
+            font-size: 15px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
+        .watermark {
+            position: fixed;
+            bottom: 10px;
+            right: 15px;
+            font-size: 13px;
+            color: rgba(0,0,0,0.4);
+            font-style: italic;
+            pointer-events: none;
+        }
+
+        /* ✅ 다크 모드 */
+        body.dark {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: #ecf0f1;
+        }
+        body.dark .main-title { color: #ecf0f1; }
+        body.dark .search-box { background: #3a4b5c; color: #ecf0f1; border-color: #555; }
+        body.dark .result-card { background: #3a4b5c; color: #ecf0f1; }
+        body.dark a { color: #8ab4f8; }
+        body.dark a:hover { color: #aecbfa; }
+
+        /* ✅ 모바일 반응형 */
+        @media (max-width: 768px) {
+            .container { padding: 10vh 15px 20px 15px; }
+            .search-box { font-size: 14px; padding: 12px 45px 12px 16px; }
+
+            .result-card { flex-direction: column; }
+            .result-title { font-size: 16px; }
+            .result-meta, .result-accuracy { font-size: 13px; }
+
+            .result-buttons { width: 100%; margin-top: 12px; gap: 10px; }
+            .result-buttons button { flex: 1; padding: 12px; font-size: 14px; }
+        }
+
+        .clickable-path {
+            color: #007bff;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+        .clickable-path:hover {
+            color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="toggle" onclick="toggleTheme()"></div>
+        <div class="header">
+            <!-- <div class="logo">
+                ✅ 내부용 로고 또는 텍스트
+                <img src="/static/sdi_logo.png" alt="Logo">
+            </div> -->
+            <div class="main-title">설비팀 문서탐색 시스템</div>
+            <div class="search-container">
+                <input type="text" id="questionInput" class="search-box" placeholder="검색어를 입력하세요 (예: 24년 3라인 연신 설비이상)">
+                <button class="search-btn" onclick="search()">
+                    <img src="https://cdn-icons-png.flaticon.com/512/49/49116.png" alt="검색">
+                </button>
+            </div>
+        </div>
+        <div id="result"></div>
+    </div>
+
+    <div class="watermark">© Samsung SDI Facility Team</div>
+
+    <script src="/static/index.js"></script>
+    <script>
+        function toggleTheme() {
+            const toggle = document.querySelector('.toggle');
+            toggle.classList.toggle('active');
+            document.body.classList.toggle('dark');
+        }
+        document.getElementById('questionInput').addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                search();
+            }
+        });
+    </script>
+</body>
+</html>
