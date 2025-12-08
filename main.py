@@ -1,65 +1,68 @@
 import os
-import json
 import logging
-import asyncio
-from datetime import datetime
+import random
+import time
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from qdrant_utils import keyword_then_semantic_rerank
-from vllm_utils import (
-    call_vllm_generate_search_condition,
-    clean_llm_keywords,
-    call_vllm_summarize_article
-)
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 # ─────────────────────────────
-# ✅ 로깅 설정 (user_log 폴더)
+# ✅ 로깅 설정
 # ─────────────────────────────
-LOG_DIR = "user_log"
-os.makedirs(LOG_DIR, exist_ok=True)
-log_filename = os.path.join(LOG_DIR, f"search_{datetime.now().strftime('%Y%m%d')}.log")
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+logger = logging.getLogger("uvicorn")
 
-logging.basicConfig(
-    filename=log_filename,
-    level=logging.INFO,
-    format="%(message)s",
-    encoding="utf-8"
-)
-
-# ─────────────────────────────
-# ✅ FastAPI 기본 설정
-# ─────────────────────────────
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+if not os.path.exists("static"):
+    os.makedirs("static")
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
 templates = Jinja2Templates(directory="templates")
 
 # ─────────────────────────────
-# ✅ 동시 접속자 추적
+# ✅ [Mock DB] 데이터
 # ─────────────────────────────
-active_connections = 0
-lock = asyncio.Lock()
+ALLOWED_USERS_DB = ["admin", "test", "samsung", "engineer", "user1"]
+VERIFICATION_CODES = {}
+REGISTERED_USERS = {"admin": "1234"}
 
-@app.middleware("http")
-async def track_active_requests(request: Request, call_next):
-    """
-    모든 요청마다 동시 접속자 수를 콘솔에 출력하는 미들웨어.
-    """
-    global active_connections
-    async with lock:
-        active_connections += 1
-        current = active_connections
-    print(f"🌐 현재 동시 접속자 수: {current}")
+# 더미 문서 풀 (랜덤 추출용)
+DUMMY_DOCS_POOL = [
+    {"file": "24년_3라인_설비이상_보고서.pdf", "path": "\\\\NAS\\Line3\\Report_2403.pdf", "grade": "B"},
+    {"file": "연신설비_유지보수_매뉴얼_v2.docx", "path": "\\\\NAS\\Manual\\Stretching_v2.docx", "grade": "A"},
+    {"file": "23년_하반기_안전교육_자료.pptx", "path": "\\\\NAS\\Safety\\Edu_2023H2.pptx", "grade": "C"},
+    {"file": "냉각수_펌프_교체_이력.xlsx", "path": "\\\\NAS\\Maintenance\\Pump_Log.xlsx", "grade": "B"},
+    {"file": "클린룸_미세먼지_측정값.csv", "path": "\\\\NAS\\Env\\Dust_2024.csv", "grade": "B"},
+    {"file": "공정_수율_분석_1분기.pdf", "path": "\\\\NAS\\Yield\\Q1_Analysis.pdf", "grade": "A"},
+    {"file": "신규_장비_입고_리스트.xlsx", "path": "\\\\NAS\\Asset\\New_Equipment.xlsx", "grade": "C"},
+]
 
-    try:
-        response = await call_next(request)
-        return response
-    finally:
-        async with lock:
-            active_connections -= 1
-            print(f"🔻 요청 종료 → 현재 동시 접속자 수: {active_connections}")
+# ─────────────────────────────
+# ✅ 데이터 모델
+# ─────────────────────────────
+class AuthRequest(BaseModel):
+    user_id: str
 
+class RegisterRequest(BaseModel):
+    user_id: str
+    code: str
+    password: str
+
+class LoginRequest(BaseModel):
+    user_id: str
+    password: str
 
 # ─────────────────────────────
 # ✅ 메인 페이지
@@ -68,99 +71,72 @@ async def track_active_requests(request: Request, call_next):
 async def serve_home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
+# ─────────────────────────────
+# ✅ [API] 인증 로직 (기존 동일)
+# ─────────────────────────────
+@app.post("/auth/request-code")
+async def request_code(req: AuthRequest):
+    user_id = req.user_id.strip()
+    if user_id not in ALLOWED_USERS_DB:
+        return JSONResponse(status_code=400, content={"error": "❌ 명단에 없는 아이디입니다."})
+    if user_id in REGISTERED_USERS and user_id != "admin":
+        return JSONResponse(status_code=400, content={"error": "⚠️ 이미 가입된 아이디입니다."})
+
+    code = str(random.randint(100000, 999999))
+    VERIFICATION_CODES[user_id] = code
+    print(f"\n{'='*50}\n📧 [메일 발송] 수신자: {user_id}@cnhxo.com\n🔑 인증 코드: [{code}]\n{'='*50}\n")
+    return {"message": "인증 코드가 발송되었습니다."}
+
+@app.post("/auth/register")
+async def register_user(req: RegisterRequest):
+    user_id = req.user_id.strip()
+    saved_code = VERIFICATION_CODES.get(user_id)
+    if not saved_code or saved_code != req.code:
+        return JSONResponse(status_code=400, content={"error": "❌ 인증 코드가 틀렸습니다."})
+    
+    REGISTERED_USERS[user_id] = req.password
+    del VERIFICATION_CODES[user_id]
+    return {"message": "가입 완료!"}
+
+@app.post("/auth/login")
+async def login(req: LoginRequest):
+    user_id = req.user_id.strip()
+    if user_id in REGISTERED_USERS and REGISTERED_USERS[user_id] == req.password:
+        return {"success": True}
+    return {"success": False, "message": "아이디 또는 비밀번호 오류"}
 
 # ─────────────────────────────
-# ✅ 문서 검색 엔드포인트
+# ✅ [API] 검색 (랜덤 문서 반환)
 # ─────────────────────────────
 @app.post("/search/documents")
 async def document_search(request: Request):
     data = await request.json()
-    user_question = data.get("question")
-
-    if not user_question:
-        return {"error": "❌ 질문이 없습니다."}
-
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    logging.info(f"\n{'='*100}")
-    logging.info(f"🕓 [{timestamp}] 문서 검색 요청")
-    logging.info(f"{'='*100}")
-    logging.info(f"📥 사용자 질문: {user_question}")
-
-    # 🔹 1️⃣ vLLM을 이용한 키워드 생성
-    raw_keywords = call_vllm_generate_search_condition(user_question)
-    keywords = clean_llm_keywords(raw_keywords)
-
-    logging.info(f"🔍 LLM 생성 키워드 (원본): {raw_keywords}")
-    logging.info(f"✅ 정제된 키워드 리스트: {keywords}")
-
-    # 🔹 2️⃣ Qdrant 검색 수행
-    document_list = keyword_then_semantic_rerank(user_question, keywords, top_k=30)
-    logging.info(f"📄 검색 결과 개수: {len(document_list)}")
-
-    formatted_documents = []
-    for idx, doc in enumerate(document_list, 1):
-        file_name = doc.get("파일명", "")
-        page = doc.get("페이지", "")
-        grade = doc.get("보안등급", "")
-        date = doc.get("날짜", "")
-        path_str = doc.get("경로", "")
-        score = doc.get("score", 0.0)
-
-        formatted_documents.append({
-            "doc_id": doc.get("문서ID", ""),
-            "page": page,
-            "file_name": file_name,
-            "date": date,
-            "path": path_str,
-            "grade": grade,
-            "accuracy": f"{round(score * 100, 2)}%",
+    question = data.get('question', '')
+    
+    # 2~4개의 랜덤 문서 추출 (질문마다 결과가 달라짐을 보여주기 위함)
+    selected_docs = random.sample(DUMMY_DOCS_POOL, k=random.randint(2, 4))
+    
+    # 문서 포맷팅
+    formatted_docs = []
+    for doc in selected_docs:
+        formatted_docs.append({
+            "file_name": doc['file'],
+            "date": "2024-05-20", # 예시 날짜
+            "path": doc['path'],
+            "grade": doc['grade'],
+            "accuracy": f"{random.randint(85, 99)}.{random.randint(0,9)}%"
         })
 
-        # 🔹 콘솔에도 표시
-      #  print(f"📄 [{idx}] {file_name} | {date} | {grade} | score={score:.4f}")
-
-    # ─────────────────────────────
-    # 📦 로그 본문 (모든 필드 포함)
-    # ─────────────────────────────
-    log_data = {
-        "timestamp": timestamp,
-        "user_question": user_question,
-        "llm_keywords_raw": raw_keywords,
-        "llm_keywords_clean": keywords,
-        "result_count": len(formatted_documents),
-        "documents": formatted_documents
-    }
-
-    logging.info(json.dumps(log_data, ensure_ascii=False, indent=2))
-    logging.info(f"{'-'*100}\n")
+    # 질문에 따라 약간 다른 답변 (더미)
+    llm_answer = f"'{question}'에 대한 분석 결과입니다.\n\n해당 설비의 주요 이슈는 3라인 냉각 계통 압력 저하로 확인됩니다. 관련된 유지보수 매뉴얼과 최근 3개월간의 점검 리스트를 우측 문서 패널에서 확인하실 수 있습니다.\n\n추가적으로 궁금한 사항이 있다면 질문해 주세요."
 
     return {
-        "result_count": len(formatted_documents),
-        "documents": formatted_documents
+        "result_count": len(formatted_docs),
+        "llm_response": llm_answer,
+        "documents": formatted_docs
     }
 
-
-# ─────────────────────────────
-# ✅ 본문 요약 엔드포인트
-# ─────────────────────────────
-@app.post("/summarize")
-async def summarize_article(request: Request):
-    data = await request.json()
-    content = data.get("content", "")
-    question = data.get("question", None)
-
-    if not content:
-        return {"error": "❌ 본문이 없습니다."}
-
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    logging.info(f"\n{'='*100}")
-    logging.info(f"🧠 [{timestamp}] 요약 요청")
-    logging.info(f"{'='*100}")
-    logging.info(f"본문 길이: {len(content)}자")
-    logging.info(f"질문: {question if question else '(없음)'}")
-
-    summary = call_vllm_summarize_article(content, question)
-    logging.info(f"요약 결과 일부: {summary[:200]}...")
-    logging.info(f"{'-'*100}\n")
-
-    return {"summary": summary}
+@app.get("/history/list")
+async def get_history():
+    # 사이드바 초기 더미 데이터
+    return {"history": []}
