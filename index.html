@@ -4,239 +4,275 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>설비팀 문서탐색 시스템</title>
-    <!-- ✅ Noto Sans KR 폰트 -->
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        :root {
+            --bg-color: #f5f7fa; --sidebar-bg: #ffffff; --text-color: #333;
+            --border-color: #e2e8f0; 
+            --accent-color: #20c997; /* 요청하신 부드러운 초록/푸른색 (Teal) */
+            --user-bubble-bg: #E8F5E9; /* 질문 블럭 부드러운 색상 */
+            --ai-bubble-bg: transparent;
+            --card-bg: #ffffff;
+        }
+        body.dark {
+            --bg-color: #1a202c; --sidebar-bg: #2d3748; --text-color: #ecf0f1;
+            --border-color: #4a5568; --accent-color: #4fd1c5;
+            --user-bubble-bg: #285e61;
+            --card-bg: #2d3748;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Noto Sans KR', sans-serif; background: var(--bg-color); color: var(--text-color); height: 100vh; overflow: hidden; }
+        .hidden { display: none !important; }
 
-        body {
-            font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            min-height: 100vh;
-            color: #333;
-            transition: background 0.3s ease, color 0.3s ease;
+        /* 인증 화면 스타일 (기존 유지) */
+        .auth-wrapper { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); display: flex; justify-content: center; align-items: center; z-index: 2000; }
+        body.dark .auth-wrapper { background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%); }
+        .auth-box { background: var(--card-bg); padding: 40px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
+        .auth-input { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 8px; background: var(--bg-color); color: var(--text-color); }
+        .btn-primary { width: 100%; padding: 14px; background: var(--accent-color); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .btn-secondary { background: transparent; border: 1px solid #ccc; color: #666; width: 100%; padding: 10px; border-radius: 8px; margin-top: 10px; cursor: pointer; }
+        
+        /* 메인 레이아웃 */
+        .app-layout { display: flex; height: 100vh; width: 100vw; transition: all 0.5s ease; }
+        
+        /* 사이드바 */
+        .sidebar { width: 280px; background: var(--sidebar-bg); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; transition: width 0.3s ease; position: relative; z-index: 100; }
+        .sidebar.collapsed { width: 60px; }
+        .sidebar-header { padding: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .sidebar-toggle-btn { cursor: pointer; font-size: 20px; color: var(--text-color); }
+        .new-chat-btn { margin: 0 15px 20px; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; background: transparent; color: var(--text-color); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s; }
+        .new-chat-btn:hover { background: var(--bg-color); border-color: var(--accent-color); color: var(--accent-color); }
+        .sidebar.collapsed .new-chat-btn span { display: none; }
+        
+        /* 히스토리 리스트 & 툴팁 */
+        .history-list { flex: 1; overflow-y: auto; padding: 10px; }
+        .history-item { 
+            padding: 12px; margin-bottom: 5px; border-radius: 8px; cursor: pointer; 
+            font-size: 14px; white-space: nowrap; overflow: hidden; 
+            position: relative; animation: slideInLeft 0.3s ease;
+            transition: background 0.2s; 
         }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 15vh 20px 40px 20px;
-            position: relative;
+        .history-item:hover { background: var(--bg-color); }
+        .history-item:hover::after {
+            content: attr(data-tooltip); 
+            position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
+            background: rgba(0,0,0,0.8); color: #fff; padding: 6px 10px; 
+            border-radius: 4px; font-size: 12px; white-space: pre-line; z-index: 999;
+            margin-left: 10px; pointer-events: none; width: max-content;
         }
-
-        .toggle {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            width: 60px;
-            height: 30px;
-            background: #ddd;
-            border-radius: 15px;
+        .history-item:hover .delete-btn { opacity: 1; } 
+        
+        /* 삭제 버튼 스타일 */
+        .delete-btn {
+            color: #e74c3c;
             cursor: pointer;
-            transition: background 0.3s ease;
-            z-index: 1000;
+            opacity: 0; 
+            transition: opacity 0.2s;
+            padding-left: 10px;
+        }
+        .item-content { 
+            flex-grow: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
-        .toggle.active { background: #4A90E2; }
-        .toggle::before {
-            content: "";
-            position: absolute;
-            top: 3px;
-            left: 3px;
-            width: 24px;
-            height: 24px;
-            background: white;
-            border-radius: 50%;
-            transition: transform 0.3s ease;
-        }
-        .toggle.active::before { transform: translateX(30px); }
+        @keyframes slideInLeft { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
 
-        .header { text-align: center; margin-bottom: 60px; }
-        .logo img { height: 60px; margin-bottom: 20px; }
+        /* 메인 컨텐츠 */
+        .main-content { flex: 1; display: flex; flex-direction: column; background: var(--bg-color); position: relative; }
+        .top-header { height: 60px; display: flex; justify-content: space-between; align-items: center; padding: 0 20px; border-bottom: 1px solid var(--border-color); background: var(--sidebar-bg); }
+        .brand-title { font-size: 16px; font-weight: 700; color: var(--accent-color); display: flex; align-items: center; gap: 8px; }
+        .header-controls { display: flex; align-items: center; gap: 20px; }
+        .user-profile { cursor: pointer; display: flex; align-items: center; gap: 8px; position: relative; }
+        .user-dropdown { position: absolute; top: 100%; right: 0; margin-top: 10px; background: var(--sidebar-bg); border: 1px solid var(--border-color); border-radius: 8px; width: 220px; display: none; flex-direction: column; z-index: 101; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .user-dropdown.active { display: flex; }
 
-        .main-title {
-            font-size: 26px;
-            font-weight: 500;
-            color: #333;
-            margin-bottom: 40px;
-        }
-
-        .search-container {
-            max-width: 600px;
-            margin: 0 auto 40px auto;
-            position: relative;
-        }
-        .search-box {
-            width: 100%;
-            padding: 15px 50px 15px 20px;
-            border: 1px solid rgba(226, 232, 240, 0.6);
+        /* 채팅 & 문서 분할 영역 */
+        .split-container { flex: 1; display: flex; overflow: hidden; padding-bottom: 80px; position: relative; }
+        
+        /* 1. 왼쪽: 채팅 영역 (누적됨) */
+        .chat-panel { flex: 1; padding: 30px; overflow-y: auto; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 20px; scroll-behavior: smooth; }
+        
+        /* 질문 블럭 (Fly Up Animation) */
+        .chat-message.user {
+            align-self: flex-end; /* 🚩 오른쪽 정렬 */
+            max-width: 70%;      /* 🚩 최대 너비 제한 */
+            background: var(--user-bubble-bg);
+            padding: 15px 20px;
             border-radius: 12px;
-            font-size: 16px;
-            outline: none;
-            background: #fff;
-            box-shadow: 0 4px 12px rgba(13, 10, 44, 0.06);
-            transition: all 0.3s ease;
-            color: #333;
-        }
-        .search-box:focus {
-            border-color: #4A90E2;
-            box-shadow: 0 4px 20px rgba(74, 144, 226, 0.2);
-        }
-        .search-btn {
-            position: absolute;
-            right: 15px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: transparent;
-            border: none;
-            width: 36px;
-            height: 36px;
             cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            animation: flyUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+        .chat-message.user:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); border-color: var(--accent-color); }
+        .chat-message.user .msg-label { font-size: 12px; color: #666; margin-bottom: 5px; font-weight: bold; text-align: right; }
+        .chat-message.user .msg-text { text-align: left; } /* 텍스트는 다시 왼쪽 정렬 */
+        
+        /* AI 답변 블럭: 왼쪽 정렬 유지 */
+        .chat-message.ai {
+            align-self: flex-start; /* 왼쪽 정렬 유지 */
+            width: 100%;
+            padding: 10px 20px;
+            background: var(--ai-bubble-bg);
+            line-height: 1.7;
+        }
+        .ai-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: var(--accent-color); font-weight: 700; font-size: 15px; }
+        .cursor { display: inline-block; width: 2px; height: 1em; background: var(--text-color); animation: blink 1s infinite; }
+
+        @keyframes flyUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes blink { 50% { opacity: 0; } }
+
+        /* 🚩 ✅ [신규] AI Thinking Motion Style */
+        .chat-message.thinking {
+            align-self: flex-start;
+            width: 80px; /* 작게 */
+            padding: 10px 15px;
+            border-radius: 18px;
+            background: #e0f2f1; /* 연한 청록색 배경 */
+        }
+        .typing-dots {
             display: flex;
             align-items: center;
-            justify-content: center;
-        }
-        .search-btn img { width: 28px; height: 28px; }
-
-        /* 결과 영역 */
-        #result { margin-top: 40px; max-width: 900px; margin: 40px auto 0; }
-
-        .result-card {
-            display: flex;
             justify-content: space-between;
-            align-items: flex-start;
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-            transition: transform 0.2s ease;
         }
-        .result-card:hover { transform: translateY(-3px); }
-
-        .result-content {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
+        .dot {
+            width: 8px;
+            height: 8px;
+            margin: 0 2px;
+            background-color: var(--accent-color);
+            border-radius: 50%;
+            opacity: 0.3;
+            animation: pulse-dot 1.5s infinite ease-in-out;
         }
-        .result-title { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
-        .result-meta { font-size: 14px; color: #666; margin-bottom: 6px; }
-        body.dark .result-meta { color: #ddd; }
-
-        .result-accuracy { font-size: 13px; color: #444; margin-bottom: 12px; }
-        body.dark .result-accuracy { color: #ccc; }
-
-        .result-buttons {
-            display: flex;
-            gap: 10px;
-            margin-top: auto;
+        .dot:nth-child(2) { animation-delay: 0.5s; }
+        .dot:nth-child(3) { animation-delay: 1s; }
+        /* 분위기 있는 점멸과 색상 변화 효과 */
+        @keyframes pulse-dot {
+            0% { transform: scale(1); opacity: 0.3; background-color: var(--accent-color); }
+            50% { transform: scale(1.4); opacity: 1; background-color: #4CAF50; } /* 초록색 */
+            100% { transform: scale(1); opacity: 0.3; background-color: #2196F3; } /* 파란색 */
         }
+        /* 🚩 ✅ [신규] 끝 */
 
-        .result-buttons button {
-            flex: unset;
-            width: auto;
-            min-width: 90px;
-            padding: 8px 16px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            background: #f8f9fa;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background 0.2s ease;
-        }
+        /* 2. 오른쪽: 문서 영역 */
+        .doc-panel { flex: 1; padding: 30px; overflow-y: auto; background: rgba(0,0,0,0.02); }
+        .doc-panel-title { font-size: 16px; font-weight: 700; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; color: #555; }
+        body.dark .doc-panel-title { color: #ccc; }
+        
+        .result-card { background: var(--card-bg); border-radius: 10px; padding: 15px; margin-bottom: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-left: 4px solid var(--accent-color); transition: 0.2s; }
+        .result-card:hover { transform: translateX(5px); }
+        .result-title { font-weight: bold; margin-bottom: 5px; font-size: 15px; }
+        .result-meta { font-size: 12px; color: #888; margin-bottom: 5px; }
+        .clickable-path { color: var(--accent-color); text-decoration: underline; cursor: pointer; font-size: 12px; word-break: break-all; }
 
-        .result-buttons button:hover { background: #e9ecef; }
+        /* 하단 검색창 */
+        .bottom-search-bar { position: absolute; bottom: 0; left: 0; width: 100%; padding: 20px; background: linear-gradient(to top, var(--bg-color) 80%, transparent); display: flex; justify-content: center; z-index: 50; }
+        .search-wrapper { width: 100%; max-width: 800px; position: relative; }
+        .main-input { width: 100%; padding: 18px 60px 18px 25px; border-radius: 30px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-color); font-size: 16px; outline: none; box-shadow: 0 5px 20px rgba(0,0,0,0.05); }
+        .send-btn { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); background: var(--accent-color); border: none; width: 40px; height: 40px; border-radius: 50%; color: white; cursor: pointer; transition: 0.2s; }
+        .send-btn:hover { transform: translateY(-50%) scale(1.1); }
+        /* 비활성화 상태 */
+        .send-btn:disabled { background: #ccc; cursor: not-allowed !important; opacity: 0.7; }
 
-        .summary-box {
-            margin-top: 12px;
-            padding: 14px 18px;
-            background: #f0f7ff;
-            border: 1px solid #cce0ff;
-            border-radius: 8px;
-            color: #333;
-            font-size: 15px;
-            line-height: 1.6;
-            white-space: pre-wrap;
-        }
 
-        .watermark {
-            position: fixed;
-            bottom: 10px;
-            right: 15px;
-            font-size: 13px;
-            color: rgba(0,0,0,0.4);
-            font-style: italic;
-            pointer-events: none;
-        }
-
-        /* ✅ 다크 모드 */
-        body.dark {
-            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-            color: #ecf0f1;
-        }
-        body.dark .main-title { color: #ecf0f1; }
-        body.dark .search-box { background: #3a4b5c; color: #ecf0f1; border-color: #555; }
-        body.dark .result-card { background: #3a4b5c; color: #ecf0f1; }
-        body.dark a { color: #8ab4f8; }
-        body.dark a:hover { color: #aecbfa; }
-
-        /* ✅ 모바일 반응형 */
-        @media (max-width: 768px) {
-            .container { padding: 10vh 15px 20px 15px; }
-            .search-box { font-size: 14px; padding: 12px 45px 12px 16px; }
-
-            .result-card { flex-direction: column; }
-            .result-title { font-size: 16px; }
-            .result-meta, .result-accuracy { font-size: 13px; }
-
-            .result-buttons { width: 100%; margin-top: 12px; gap: 10px; }
-            .result-buttons button { flex: 1; padding: 12px; font-size: 14px; }
-        }
-
-        .clickable-path {
-            color: #007bff;
-            text-decoration: underline;
-            cursor: pointer;
-        }
-        .clickable-path:hover {
-            color: #0056b3;
+        /* 새 채팅 애니메이션용 클래스 */
+        .shrink-animation { animation: shrinkToSidebar 0.8s forwards ease-in-out; }
+        @keyframes shrinkToSidebar {
+            0% { transform: scale(1) translate(0, 0); opacity: 1; }
+            50% { transform: scale(0.4) translate(-40%, -40%); opacity: 0.5; }
+            100% { transform: scale(0.1) translate(-100%, -100%); opacity: 0; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="toggle" onclick="toggleTheme()"></div>
-        <div class="header">
-            <!-- <div class="logo">
-                ✅ 내부용 로고 또는 텍스트
-                <img src="/static/sdi_logo.png" alt="Logo">
-            </div> -->
-            <div class="main-title">설비팀 문서탐색 시스템</div>
-            <div class="search-container">
-                <input type="text" id="questionInput" class="search-box" placeholder="검색어를 입력하세요 (예: 24년 3라인 연신 설비이상)">
-                <button class="search-btn" onclick="search()">
-                    <img src="https://cdn-icons-png.flaticon.com/512/49/49116.png" alt="검색">
-                </button>
-            </div>
+
+    <div id="auth-layer" class="auth-wrapper">
+        <div id="login-box" class="auth-box">
+            <h2 style="color:var(--accent-color);">문서탐색 시스템</h2><br>
+            <input type="text" id="loginId" class="auth-input" placeholder="사번 (아이디)">
+            <input type="password" id="loginPw" class="auth-input" placeholder="비밀번호">
+            <button class="btn-primary" onclick="checkLogin()">로그인</button>
+            <button class="btn-secondary" onclick="showSignup()">회원가입</button>
         </div>
-        <div id="result"></div>
+        <div id="signup-box" class="auth-box hidden">
+            <h2 style="color:var(--accent-color);">회원가입</h2><br>
+            <div style="display:flex; gap:5px;">
+                <input type="text" id="signupId" class="auth-input" placeholder="아이디 (@cnhxo.com 제외)">
+                <button style="width:100px; height:42px; background:#666; color:white; border:none; border-radius:8px; cursor:pointer;" onclick="reqCode()">인증요청</button>
+            </div>
+            <div id="verify-area" class="hidden" style="margin-top:10px;">
+                <input type="text" id="verifyCode" class="auth-input" placeholder="인증코드 6자리">
+                <input type="password" id="newPw" class="auth-input" placeholder="비밀번호 설정">
+                <button class="btn-primary" onclick="doRegister()">가입완료</button>
+            </div>
+            <button class="btn-secondary" onclick="showLogin()">취소</button>
+        </div>
     </div>
 
-    <div class="watermark">© Samsung SDI Facility Team</div>
+    <div id="main-app" class="app-layout hidden">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <i class="fas fa-bars sidebar-toggle-btn" onclick="toggleSidebar()"></i>
+            </div>
+            <button class="new-chat-btn" onclick="archiveCurrentChat()">
+                <i class="fas fa-plus"></i> <span>새 채팅</span>
+            </button>
+            <div class="history-list" id="history-list"></div>
+        </aside>
+
+        <main class="main-content">
+            <header class="top-header">
+                <div class="brand-title">
+                    <i class="fas fa-star-of-life" style="font-size:20px;"></i>
+                    HMO AI 문서탐색
+                </div>
+                <div class="header-controls">
+                    <div onclick="toggleTheme()" style="cursor:pointer;"><i class="fas fa-moon" id="theme-icon"></i></div>
+                    <div style="font-weight:bold; color:#e74c3c;" id="timer">20:00</div>
+                    <div class="user-profile" onclick="toggleUserMenu()">
+                        <i class="fas fa-user-circle" style="font-size:24px;"></i>
+                        <span id="display-username">User</span>
+                        <div class="user-dropdown" id="user-dropdown">
+                            <div style="padding:15px; border-bottom:1px solid #eee; font-size:13px; color:#888;">
+                                <span id="full-email">user@cnhxo.com</span>
+                            </div>
+                            <button style="width:100%; padding:12px; color:#e74c3c; background:none; border:none; text-align:left; cursor:pointer;" onclick="logout()">로그아웃</button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <div class="split-container" id="workspace">
+                
+                <div class="chat-panel" id="chat-container">
+                    <div style="text-align:center; color:#999; margin-top:50px;" id="welcome-msg">
+                        <i class="fas fa-search" style="font-size:40px; margin-bottom:15px; color:#ddd;"></i><br>
+                        문서 탐색을 시작하려면 질문을 입력하세요.
+                    </div>
+                </div>
+
+                <div class="doc-panel" id="doc-container">
+                    <div class="doc-panel-title"><i class="fas fa-file-alt"></i> 관련 문서</div>
+                    <div id="doc-results">
+                        <div style="color:#888; font-size:14px; margin-top:10px;">
+                            질문을 입력하거나 왼쪽 채팅의 질문을 클릭하면<br>관련된 문서가 여기에 표시됩니다.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bottom-search-bar">
+                <div class="search-wrapper">
+                    <input type="text" id="mainInput" class="main-input" placeholder="질문을 입력하세요...">
+                    <button class="send-btn" onclick="performSearch()"><i class="fas fa-paper-plane"></i></button>
+                </div>
+            </div>
+        </main>
+    </div>
 
     <script src="/static/index.js"></script>
-    <script>
-        function toggleTheme() {
-            const toggle = document.querySelector('.toggle');
-            toggle.classList.toggle('active');
-            document.body.classList.toggle('dark');
-        }
-        document.getElementById('questionInput').addEventListener('keydown', function(event) {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                search();
-            }
-        });
-    </script>
 </body>
 </html>
